@@ -353,7 +353,7 @@ func patchIndex(dir string) error {
 	if err := os.WriteFile(filename, []byte(content), 0o644); err != nil {
 		return err
 	}
-	css := `.unline-powered{position:fixed;right:12px;bottom:10px;z-index:2147483647;padding:4px 7px;border-radius:6px;background:rgba(255,255,255,.88);color:#111;font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.18);pointer-events:auto}.unline-powered a{color:#06c755;text-decoration:none;font-weight:600}.unline-powered a:focus,.unline-powered a:hover{text-decoration:underline}`
+	css := `.unline-powered{display:none;position:fixed;right:12px;bottom:10px;z-index:2147483647;padding:4px 7px;border-radius:6px;background:rgba(255,255,255,.88);color:#111;font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.18);pointer-events:auto}body:has([class*=loginPage-module__page_login]) .unline-powered{display:block}.unline-powered a{color:#06c755;text-decoration:none;font-weight:600}.unline-powered a:focus,.unline-powered a:hover{text-decoration:underline}`
 	if err := os.WriteFile(filepath.Join(dir, "unline-powered.css"), []byte(css), 0o644); err != nil {
 		return err
 	}
@@ -456,7 +456,10 @@ func VerifyAssets(dir string) (Report, error) {
 			return nil
 		}},
 		{"powered link", func() error {
-			return fileContains(filepath.Join(dir, "index.html"), "Powered by", "https://github.com/EdamAme-x/unline")
+			if err := fileContains(filepath.Join(dir, "index.html"), "Powered by", "https://github.com/EdamAme-x/unline"); err != nil {
+				return err
+			}
+			return fileContains(filepath.Join(dir, "unline-powered.css"), "display:none", "body:has([class*=loginPage-module__page_login])")
 		}},
 		{"service worker disabled", func() error {
 			if err := fileContains(filepath.Join(dir, "index.html"), "/unline-cleanup.js"); err != nil {
