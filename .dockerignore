@@ -1,0 +1,15 @@
+.git
+.cache
+dist
+secret
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.crx
+*.zip
+*.log
+coverage.out

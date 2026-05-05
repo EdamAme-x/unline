@@ -1,0 +1,28 @@
+[Unit]
+Description=unline self-hosted LINE web client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unline
+Group=unline
+Environment=UNLINE_ADDR=127.0.0.1:8080
+Environment=UNLINE_ASSETS_DIR=/opt/unline/www
+Environment=UNLINE_ALLOWED_HOSTS=localhost,127.0.0.1,::1
+Environment=UNLINE_FORWARD_COOKIES=false
+Environment=UNLINE_FORWARD_AUTHORIZATION=false
+ExecStart=/usr/local/bin/unline serve
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

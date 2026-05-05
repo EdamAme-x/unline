@@ -1,0 +1,10 @@
+title = "unline"
+
+[allowlist]
+paths = [
+  '''^\.git/''',
+  '''^www/''',
+  '''^dist/''',
+  '''^secret/''',
+  '''^\.cache/''',
+]

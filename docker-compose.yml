@@ -1,0 +1,40 @@
+services:
+  setup:
+    build:
+      context: .
+    image: unline:local
+    command:
+      - setup
+      - --out
+      - /setup/.env
+    user: "${UNLINE_SETUP_UID:-1000}:${UNLINE_SETUP_GID:-1000}"
+    volumes:
+      - .:/setup
+    stdin_open: true
+    tty: true
+    profiles:
+      - setup
+
+  unline:
+    build:
+      context: .
+    image: unline:local
+    environment:
+      UNLINE_ADDR: 0.0.0.0:8080
+      UNLINE_ASSETS_DIR: /app/www
+      UNLINE_ALLOWED_HOSTS: ${UNLINE_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
+      UNLINE_FORWARD_COOKIES: ${UNLINE_FORWARD_COOKIES:-false}
+      UNLINE_FORWARD_AUTHORIZATION: ${UNLINE_FORWARD_AUTHORIZATION:-false}
+      UNLINE_BASIC_AUTH_USERNAME: ${UNLINE_BASIC_AUTH_USERNAME:-}
+      UNLINE_BASIC_AUTH_PASSWORD_HASH: ${UNLINE_BASIC_AUTH_PASSWORD_HASH:-}
+      UNLINE_BASIC_AUTH_REALM: ${UNLINE_BASIC_AUTH_REALM:-unline}
+    ports:
+      - "127.0.0.1:${UNLINE_HOST_PORT:-8080}:8080"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    restart: unless-stopped

@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "permission-check": "deno eval --no-prompt \"console.log('unline does not require Deno runtime permissions')\""
+  }
+}

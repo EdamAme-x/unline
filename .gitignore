@@ -1,0 +1,26 @@
+# Generated upstream assets. Recreate with:
+#   go run ./cmd/unline generate --out ./www
+/www/
+/dist/
+/.cache/
+
+# Local secrets and deployment material.
+/secret/
+/.env
+/.env.*
+!/.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Downloaded packages.
+*.crx
+*.zip
+
+# Tooling noise.
+/.idea/
+/.vscode/
+*.log
+coverage.out

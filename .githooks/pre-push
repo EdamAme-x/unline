@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go test ./...
+scripts/security-audit.sh
+
+if [[ -d www ]]; then
+  go run ./cmd/unline verify --assets ./www
+fi

@@ -1,0 +1,28 @@
+* text=auto eol=lf
+
+*.go text eol=lf diff=golang
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.wasm binary
+*.wav binary
+*.crx binary
+*.zip binary
+*.pem -diff
+*.key -diff
+*.crt -diff
+*.p12 -diff
+*.pfx -diff
+
+www/** linguist-generated=true
+dist/** linguist-generated=true

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+blocked_paths='(^|/)(www|dist|secret|\.cache)(/|$)|(^|/)\.env(\.|$)|\.(pem|key|crt|p12|pfx|crx|zip)$'
+
+git diff --cached --check
+
+while IFS= read -r -d '' file; do
+  [[ -e "$file" ]] || continue
+  [[ "$file" == ".env.example" ]] && continue
+  if [[ "$file" =~ $blocked_paths ]]; then
+    echo "refusing to commit generated/secret path: $file" >&2
+    exit 1
+  fi
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  if [[ -x "$HOME/go/bin/gitleaks" ]]; then
+    GITLEAKS_BIN="$HOME/go/bin/gitleaks"
+  else
+    echo "gitleaks is required for pre-commit secret scanning." >&2
+    echo "Install example: go install github.com/zricethezav/gitleaks/v8@v8.24.3" >&2
+    exit 127
+  fi
+else
+  GITLEAKS_BIN="$(command -v gitleaks)"
+fi
+"$GITLEAKS_BIN" protect --staged --redact --no-banner
+
+unformatted="$(gofmt -l $(git ls-files '*.go'))"
+if [[ -n "$unformatted" ]]; then
+  echo "gofmt required:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+
+go test ./...
+scripts/security-audit.sh
