@@ -2,7 +2,7 @@ package security
 
 import "net/http"
 
-const ContentSecurityPolicy = "default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'"
+const ContentSecurityPolicy = "default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://*.line-scdn.net https://*.landpress.line.me; img-src 'self' data: blob: https://*.line-scdn.net https://*.landpress.line.me; media-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'"
 
 func ApplyHeaders(h http.Header) {
 	h.Set("Content-Security-Policy", ContentSecurityPolicy)
