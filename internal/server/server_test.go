@@ -33,8 +33,11 @@ func TestStaticHeadersAndHostGuard(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self'") {
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self'") || !strings.Contains(got, "frame-ancestors 'self'") {
 		t.Fatalf("missing strict CSP: %q", got)
+	}
+	if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Fatalf("unexpected X-Frame-Options: %q", got)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "http://evil.example/", nil)

@@ -24,3 +24,4 @@
 /.vscode/
 *.log
 coverage.out
+.playwright-mcp/
