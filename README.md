@@ -1,7 +1,7 @@
-# unline
+# UNLINE
 
-Self-hostable wrapper for the LINE web client assets.
 セルフホスト可能なLINEのWebクライアント
+学校のPCでLINE使いたい人向け！
 
 ## Docker Quick Start
 
