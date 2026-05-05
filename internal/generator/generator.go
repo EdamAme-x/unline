@@ -253,6 +253,10 @@ func PatchAssets(dir string) (Report, error) {
 		return report, err
 	}
 	report.Lines = append(report.Lines, "patch powered-by count=1")
+	if err := patchOGPImagePatcher(dir); err != nil {
+		return report, err
+	}
+	report.Lines = append(report.Lines, "patch ogp image proxy=1")
 	if err := patchCallMessagePatcher(dir); err != nil {
 		return report, err
 	}
@@ -343,6 +347,9 @@ func patchIndex(dir string) error {
 	if !strings.Contains(content, "unline-call-message-patch.js") {
 		content = strings.Replace(content, "<head>", `<head><script defer="defer" src="/unline-call-message-patch.js"></script>`, 1)
 	}
+	if !strings.Contains(content, "unline-ogp-image-patch.js") {
+		content = strings.Replace(content, "<head>", `<head><script defer="defer" src="/unline-ogp-image-patch.js"></script>`, 1)
+	}
 	if !strings.Contains(content, "unline-powered.css") {
 		content = strings.Replace(content, "</head>", `<link rel="stylesheet" href="/unline-powered.css"></head>`, 1)
 	}
@@ -359,6 +366,11 @@ func patchIndex(dir string) error {
 	}
 	cleanup := `(function(){if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(registrations){registrations.forEach(function(registration){registration.unregister();});}).catch(function(){});}if("caches"in window){caches.keys().then(function(keys){return Promise.all(keys.map(function(key){return caches.delete(key);}));}).catch(function(){});}})();`
 	return os.WriteFile(filepath.Join(dir, "unline-cleanup.js"), []byte(cleanup), 0o644)
+}
+
+func patchOGPImagePatcher(dir string) error {
+	script := `(function(){var proxyPath="/_proxy/OGP_IMAGE?url=";var passthroughHosts={"profile.line-scdn.net":1,"shop.line-scdn.net":1,"obs.line-scdn.net":1,"static.line-scdn.net":1,"emojipack.landpress.line.me":1};function proxyURL(raw){if(!raw){return"";}try{var u=new URL(raw,location.href);if(u.origin===location.origin){return"";}if(u.protocol!=="https:"&&u.protocol!=="http:"){return"";}if(passthroughHosts[u.hostname]){return"";}return proxyPath+encodeURIComponent(u.href);}catch(e){return"";}}function patchImage(img){if(!img||img.nodeType!==Node.ELEMENT_NODE||img.tagName!=="IMG"){return;}var raw=img.getAttribute("src");var next=proxyURL(raw);if(!next){return;}img.dataset.unlineOriginalSrc=raw;img.setAttribute("src",next);if(img.hasAttribute("srcset")){img.dataset.unlineOriginalSrcset=img.getAttribute("srcset")||"";img.removeAttribute("srcset");}}function scan(root){if(!root){return;}if(root.nodeType===Node.ELEMENT_NODE&&root.tagName==="IMG"){patchImage(root);return;}if(root.querySelectorAll){root.querySelectorAll("img").forEach(patchImage);}}function start(){scan(document);var observer=new MutationObserver(function(records){for(var i=0;i<records.length;i++){var record=records[i];if(record.type==="attributes"){patchImage(record.target);continue;}for(var j=0;j<record.addedNodes.length;j++){scan(record.addedNodes[j]);}}});observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","srcset"]});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true});}else{start();}})();`
+	return os.WriteFile(filepath.Join(dir, "unline-ogp-image-patch.js"), []byte(script), 0o644)
 }
 
 func patchCallMessagePatcher(dir string) error {
@@ -448,7 +460,7 @@ func VerifyAssets(dir string) (Report, error) {
 		fn   func() error
 	}{
 		{"required files", func() error {
-			for _, file := range []string{"index.html", "unline-call-message-patch.js", "unline-cleanup.js", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
+			for _, file := range []string{"index.html", "unline-call-message-patch.js", "unline-cleanup.js", "unline-ogp-image-patch.js", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
 				if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 					return err
 				}
@@ -475,6 +487,12 @@ func VerifyAssets(dir string) (Report, error) {
 				return err
 			}
 			return fileContains(filepath.Join(dir, "unline-call-message-patch.js"), "unline-call-svg-message", "icon_video", `\u3053\u306e\u6a5f\u80fd`)
+		}},
+		{"ogp image patcher", func() error {
+			if err := fileContains(filepath.Join(dir, "index.html"), "/unline-ogp-image-patch.js"); err != nil {
+				return err
+			}
+			return fileContains(filepath.Join(dir, "unline-ogp-image-patch.js"), "/_proxy/OGP_IMAGE?url=", "MutationObserver", "unlineOriginalSrc")
 		}},
 		{"proxy patches", func() error {
 			if err := fileContains(filepath.Join(dir, "static/js/main.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "/_proxy/CDN_STICKER", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"); err != nil {

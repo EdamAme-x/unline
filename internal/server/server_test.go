@@ -1,8 +1,12 @@
 package server
 
 import (
+	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +15,12 @@ import (
 	"github.com/EdamAme-x/unline/internal/auth"
 	"github.com/EdamAme-x/unline/internal/config"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
 
 func TestStaticHeadersAndHostGuard(t *testing.T) {
 	dir := t.TempDir()
@@ -105,6 +115,83 @@ func TestChromeGWCookieRewrite(t *testing.T) {
 	copyChromeGWCookies(header, req.Cookies())
 	if got := header.Get("Cookie"); got != "lct=token" {
 		t.Fatalf("unexpected forwarded Cookie: %q", got)
+	}
+}
+
+func TestRemoteImageTargetValidation(t *testing.T) {
+	oldLookup := lookupIPAddr
+	t.Cleanup(func() {
+		lookupIPAddr = oldLookup
+	})
+	lookupIPAddr = func(_ context.Context, host string) ([]net.IPAddr, error) {
+		if host != "pbs.twimg.com" {
+			t.Fatalf("unexpected lookup host: %s", host)
+		}
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+
+	raw := "https://pbs.twimg.com/amplify_video_thumb/2051252800118779904/img/jK21fF3HrEa0tLFF.jpg:large#drop"
+	got, err := remoteImageTarget(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("remoteImageTarget failed: %v", err)
+	}
+	if got != strings.TrimSuffix(raw, "#drop") {
+		t.Fatalf("unexpected target: %q", got)
+	}
+
+	for _, raw := range []string{
+		"",
+		"file:///etc/passwd",
+		"https://localhost/image.jpg",
+		"https://127.0.0.1/image.jpg",
+		"https://[::1]/image.jpg",
+		"https://example.com:8080/image.jpg",
+		"https://user@example.com/image.jpg",
+	} {
+		if got, err := remoteImageTarget(context.Background(), raw); err == nil {
+			t.Fatalf("expected %q to be rejected, got %q", raw, got)
+		}
+	}
+}
+
+func TestOGPImageProxy(t *testing.T) {
+	oldLookup := lookupIPAddr
+	t.Cleanup(func() {
+		lookupIPAddr = oldLookup
+	})
+	lookupIPAddr = func(_ context.Context, host string) ([]net.IPAddr, error) {
+		if host != "pbs.twimg.com" {
+			t.Fatalf("unexpected lookup host: %s", host)
+		}
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+	cfg := config.DefaultServerConfig()
+	cfg.AssetsDir = t.TempDir()
+	if err := cfg.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{
+		cfg: cfg,
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://pbs.twimg.com/amplify_video_thumb/2051252800118779904/img/jK21fF3HrEa0tLFF.jpg:large" {
+				t.Fatalf("unexpected proxied URL: %s", req.URL.String())
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"image/jpeg"}},
+				Body:       io.NopCloser(strings.NewReader("jpeg")),
+			}, nil
+		})},
+	}
+	raw := "https://pbs.twimg.com/amplify_video_thumb/2051252800118779904/img/jK21fF3HrEa0tLFF.jpg:large"
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/_proxy/OGP_IMAGE?url="+url.QueryEscape(raw), nil)
+	rec := httptest.NewRecorder()
+	h.proxyOGPImage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "jpeg" {
+		t.Fatalf("unexpected body: %q", got)
 	}
 }
 

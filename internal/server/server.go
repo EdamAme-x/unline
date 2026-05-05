@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"mime"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -25,6 +28,8 @@ const (
 	cdnStickerBaseURL = "https://stickershop.line-scdn.net"
 )
 
+var lookupIPAddr = net.DefaultResolver.LookupIPAddr
+
 type Handler struct {
 	cfg        config.ServerConfig
 	httpClient *http.Client
@@ -32,6 +37,7 @@ type Handler struct {
 
 type proxyOptions struct {
 	chromeGW bool
+	image    bool
 }
 
 func New(cfg config.ServerConfig) (http.Handler, error) {
@@ -52,6 +58,7 @@ func New(cfg config.ServerConfig) (http.Handler, error) {
 	mux.HandleFunc("/_proxy/R4", h.proxyR4)
 	mux.HandleFunc("/_proxy/CHROME_GW/", h.proxyChromeGW)
 	mux.HandleFunc("/_proxy/CDN_STICKER/", h.proxyCDNSticker)
+	mux.HandleFunc("/_proxy/OGP_IMAGE", h.proxyOGPImage)
 	mux.HandleFunc("/", h.static)
 	return h.wrap(mux), nil
 }
@@ -140,6 +147,19 @@ func (h *Handler) proxyCDNSticker(w http.ResponseWriter, r *http.Request) {
 	h.proxyPath(w, r, "/_proxy/CDN_STICKER", cdnStickerBaseURL, proxyOptions{})
 }
 
+func (h *Handler) proxyOGPImage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	target, err := remoteImageTarget(r.Context(), r.URL.Query().Get("url"))
+	if err != nil {
+		http.Error(w, "bad image url", http.StatusBadRequest)
+		return
+	}
+	h.proxy(w, r, target, proxyOptions{image: true})
+}
+
 func (h *Handler) proxyPath(w http.ResponseWriter, r *http.Request, prefix, baseURL string, opts proxyOptions) {
 	suffix := strings.TrimPrefix(r.URL.Path, prefix)
 	if suffix == "" {
@@ -209,12 +229,81 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string, o
 	}
 	defer resp.Body.Close()
 
+	if opts.image && resp.StatusCode >= 200 && resp.StatusCode <= 299 && !imageContentTypeAllowed(resp.Header.Get("Content-Type")) {
+		http.Error(w, "upstream did not return an image", http.StatusBadGateway)
+		return
+	}
 	copyResponseHeaders(w.Header(), resp.Header)
 	if opts.chromeGW {
 		copyChromeGWSetCookies(w.Header(), resp.Cookies(), isSecureRequest(r))
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func remoteImageTarget(ctx context.Context, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("missing image url")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() {
+		return "", errors.New("invalid image url")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return "", errors.New("unsupported image scheme")
+	}
+	if u.User != nil || u.Hostname() == "" || !remoteImagePortAllowed(u.Port()) {
+		return "", errors.New("unsafe image url")
+	}
+	if !remoteImageHostAllowed(ctx, u.Hostname()) {
+		return "", errors.New("unsafe image host")
+	}
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+func remoteImagePortAllowed(port string) bool {
+	return port == "" || port == "80" || port == "443"
+}
+
+func remoteImageHostAllowed(ctx context.Context, host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
+		return false
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return remoteImageIPAllowed(ip)
+	}
+	addrs, err := lookupIPAddr(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, addr := range addrs {
+		ip, ok := netip.AddrFromSlice(addr.IP)
+		if !ok || !remoteImageIPAllowed(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+func remoteImageIPAllowed(ip netip.Addr) bool {
+	if ip.Is4In6() {
+		ip = ip.Unmap()
+	}
+	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsMulticast() && !ip.IsUnspecified()
+}
+
+func imageContentTypeAllowed(value string) bool {
+	if value == "" {
+		return true
+	}
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(mediaType), "image/")
 }
 
 func cleanAssetPath(raw string) string {
