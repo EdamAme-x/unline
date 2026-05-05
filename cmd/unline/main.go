@@ -89,7 +89,7 @@ func serve(ctx context.Context, args []string) error {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		WriteTimeout:      cfg.ProxyTimeout + 30*time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 

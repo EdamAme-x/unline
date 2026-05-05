@@ -29,6 +29,10 @@ type Handler struct {
 	httpClient *http.Client
 }
 
+type proxyOptions struct {
+	chromeGW bool
+}
+
 func New(cfg config.ServerConfig) (http.Handler, error) {
 	if _, err := os.Stat(cfg.AssetsDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -123,7 +127,7 @@ func (h *Handler) missingAssets(w http.ResponseWriter) {
 func (h *Handler) proxyR4(w http.ResponseWriter, r *http.Request) {
 	u, _ := url.Parse(r4BaseURL)
 	u.RawQuery = r.URL.RawQuery
-	h.proxy(w, r, u.String())
+	h.proxy(w, r, u.String(), proxyOptions{})
 }
 
 func (h *Handler) proxyChromeGW(w http.ResponseWriter, r *http.Request) {
@@ -138,10 +142,10 @@ func (h *Handler) proxyChromeGW(w http.ResponseWriter, r *http.Request) {
 	u, _ := url.Parse(chromeGWBaseURL)
 	u.Path = suffix
 	u.RawQuery = r.URL.RawQuery
-	h.proxy(w, r, u.String())
+	h.proxy(w, r, u.String(), proxyOptions{chromeGW: true})
 }
 
-func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string) {
+func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string, opts proxyOptions) {
 	if !methodAllowed(r.Method) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -168,7 +172,7 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string) {
 		http.Error(w, "bad upstream request", http.StatusInternalServerError)
 		return
 	}
-	copyProxyHeaders(upstreamReq.Header, r.Header, h.cfg)
+	copyProxyHeaders(upstreamReq.Header, r, h.cfg, opts)
 	upstreamReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36 unline/"+serverVersion())
 
 	resp, err := h.httpClient.Do(upstreamReq)
@@ -184,6 +188,9 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string) {
 	defer resp.Body.Close()
 
 	copyResponseHeaders(w.Header(), resp.Header)
+	if opts.chromeGW {
+		copyChromeGWSetCookies(w.Header(), resp.Cookies(), isSecureRequest(r))
+	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 }
@@ -211,14 +218,20 @@ func methodAllowed(method string) bool {
 	}
 }
 
-func copyProxyHeaders(dst, src http.Header, cfg config.ServerConfig) {
-	for key, values := range src {
+func copyProxyHeaders(dst http.Header, src *http.Request, cfg config.ServerConfig, opts proxyOptions) {
+	for key, values := range src.Header {
+		if opts.chromeGW && strings.EqualFold(key, "cookie") {
+			continue
+		}
 		if proxyRequestHeaderBlocked(key, cfg) {
 			continue
 		}
 		for _, value := range values {
 			dst.Add(key, value)
 		}
+	}
+	if opts.chromeGW {
+		copyChromeGWCookies(dst, src.Cookies())
 	}
 }
 
@@ -261,6 +274,44 @@ func proxyResponseHeaderBlocked(key string) bool {
 	default:
 		return false
 	}
+}
+
+func copyChromeGWCookies(dst http.Header, cookies []*http.Cookie) {
+	var parts []string
+	for _, cookie := range cookies {
+		if chromeGWCookieAllowed(cookie.Name) {
+			parts = append(parts, cookie.Name+"="+cookie.Value)
+		}
+	}
+	if len(parts) > 0 {
+		dst.Set("Cookie", strings.Join(parts, "; "))
+	}
+}
+
+func copyChromeGWSetCookies(dst http.Header, cookies []*http.Cookie, secure bool) {
+	for _, cookie := range cookies {
+		if !chromeGWCookieAllowed(cookie.Name) {
+			continue
+		}
+		copied := *cookie
+		copied.Domain = ""
+		copied.Path = "/_proxy/CHROME_GW"
+		copied.Secure = secure
+		copied.HttpOnly = true
+		copied.SameSite = http.SameSiteLaxMode
+		dst.Add("Set-Cookie", copied.String())
+	}
+}
+
+func chromeGWCookieAllowed(name string) bool {
+	return name == "lct"
+}
+
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func allowedCORSHeaders(raw string) string {

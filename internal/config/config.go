@@ -31,7 +31,7 @@ func DefaultServerConfig() ServerConfig {
 		Addr:            "127.0.0.1:8080",
 		AssetsDir:       "./www",
 		AllowedHostsRaw: "localhost,127.0.0.1,::1",
-		ProxyTimeout:    30 * time.Second,
+		ProxyTimeout:    180 * time.Second,
 		MaxBodyBytes:    32 << 20,
 		BasicAuthRealm:  "unline",
 	}

@@ -69,6 +69,34 @@ func TestProxyPreflightRejectsExternalOrigin(t *testing.T) {
 	}
 }
 
+func TestChromeGWCookieRewrite(t *testing.T) {
+	src := []*http.Cookie{
+		{Name: "lct", Value: "token", Domain: ".line-apps.com", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteNoneMode},
+		{Name: "other", Value: "drop"},
+	}
+	header := http.Header{}
+	copyChromeGWSetCookies(header, src, false)
+	got := header.Values("Set-Cookie")
+	if len(got) != 1 {
+		t.Fatalf("expected one Set-Cookie, got %d: %#v", len(got), got)
+	}
+	if !strings.Contains(got[0], "lct=token") || !strings.Contains(got[0], "Path=/_proxy/CHROME_GW") || !strings.Contains(got[0], "HttpOnly") || !strings.Contains(got[0], "SameSite=Lax") {
+		t.Fatalf("unexpected rewritten cookie: %q", got[0])
+	}
+	if strings.Contains(got[0], "Domain=") || strings.Contains(got[0], "Secure") || strings.Contains(got[0], "other=") {
+		t.Fatalf("cookie kept unsafe attributes: %q", got[0])
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/_proxy/CHROME_GW/api", nil)
+	req.AddCookie(&http.Cookie{Name: "lct", Value: "token"})
+	req.AddCookie(&http.Cookie{Name: "other", Value: "drop"})
+	header = http.Header{}
+	copyChromeGWCookies(header, req.Cookies())
+	if got := header.Get("Cookie"); got != "lct=token" {
+		t.Fatalf("unexpected forwarded Cookie: %q", got)
+	}
+}
+
 func TestBasicAuthIgnoresUsername(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("ok"), 0o644); err != nil {
