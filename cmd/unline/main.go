@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -128,9 +129,6 @@ func setup(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if strings.TrimSpace(username) == "" {
-		return fmt.Errorf("username must not be empty")
-	}
 	if _, err := os.Stat(out); err == nil && !force {
 		return fmt.Errorf("%s already exists; pass --force to overwrite", out)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -138,20 +136,32 @@ func setup(args []string) error {
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	first, err := readSecret(reader, "Initial access key: ")
+	enableAuth, err := readYesNo(reader, "Enable access authentication? (y/n) => ")
 	if err != nil {
 		return err
 	}
-	second, err := readSecret(reader, "Confirm access key: ")
-	if err != nil {
-		return err
-	}
-	if first != second {
-		return fmt.Errorf("access key confirmation did not match")
-	}
-	hash, err := auth.HashSecret([]byte(first))
-	if err != nil {
-		return err
+	hash := ""
+	if enableAuth {
+		if strings.TrimSpace(username) == "" {
+			return fmt.Errorf("username must not be empty")
+		}
+		first, err := readSecret(reader, "Access key: ")
+		if err != nil {
+			return err
+		}
+		second, err := readSecret(reader, "Confirm access key: ")
+		if err != nil {
+			return err
+		}
+		if first != second {
+			return fmt.Errorf("access key confirmation did not match")
+		}
+		hash, err = auth.HashSecret([]byte(first))
+		if err != nil {
+			return err
+		}
+	} else {
+		username = ""
 	}
 	content := strings.Join([]string{
 		"UNLINE_ADDR=127.0.0.1:8080",
@@ -168,7 +178,11 @@ func setup(args []string) error {
 		return err
 	}
 	fmt.Printf("wrote %s\n", out)
-	fmt.Println("load it with: set -a; . ./.env; set +a")
+	if enableAuth {
+		fmt.Println("access authentication enabled")
+	} else {
+		fmt.Println("access authentication disabled")
+	}
 	return nil
 }
 
@@ -220,6 +234,27 @@ Usage:
 `, version)
 }
 
+func readYesNo(reader *bufio.Reader, prompt string) (bool, error) {
+	for {
+		fmt.Fprint(os.Stderr, prompt)
+		value, err := reader.ReadString('\n')
+		if err != nil && !(errors.Is(err, io.EOF) && value != "") {
+			return false, err
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Fprintln(os.Stderr, "Please answer y or n.")
+			if errors.Is(err, io.EOF) {
+				return false, io.EOF
+			}
+		}
+	}
+}
+
 func readSecret(reader *bufio.Reader, prompt string) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
 	fd := int(os.Stdin.Fd())
@@ -240,7 +275,7 @@ func readSecret(reader *bufio.Reader, prompt string) (string, error) {
 	if !hasTermios {
 		fmt.Fprintln(os.Stderr)
 	}
-	if err != nil {
+	if err != nil && !(errors.Is(err, io.EOF) && value != "") {
 		return "", err
 	}
 	value = strings.TrimRight(value, "\r\n")
@@ -260,7 +295,7 @@ func ioctl(fd int, request, argp uintptr) error {
 
 func shellValue(value string) string {
 	if value == "" {
-		return `""`
+		return ""
 	}
 	if strings.IndexFunc(value, func(r rune) bool {
 		return !(r == '_' || r == '-' || r == '.' || r == ':' || r == '/' || r == '+' || r == '=' || r == '@' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z')

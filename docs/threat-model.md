@@ -5,7 +5,7 @@
 - LINE account session material stored by the browser client.
 - Self-host deployment cookies or reverse-proxy credentials.
 - Local TLS keys and environment files.
-- Basic auth access key.
+- Optional access authentication key.
 - Generated upstream LINE extension package.
 
 ## Default Deny Decisions
@@ -14,7 +14,7 @@
 - The server does not forward local `Cookie` headers.
 - The server does not forward `Authorization` headers unless explicitly configured.
 - The server strips upstream `Set-Cookie` headers to avoid binding LINE cookies to the self-host origin.
-- The server can require Basic auth and stores only a salted PBKDF2-SHA256 hash.
+- The server can require access authentication and stores only a salted PBKDF2-SHA256 hash.
 - Browser `connect-src` is same-origin by default, so unpatched direct telemetry and API calls are blocked.
 - Generated upstream assets are ignored by git and verified after generation.
 

@@ -20,7 +20,7 @@ If `8080` is already in use:
 UNLINE_HOST_PORT=18080 docker compose up -d --build unline
 ```
 
-`setup` asks for the initial Basic auth access key twice and writes `.env` with only a salted PBKDF2-SHA256 hash. `.env` is gitignored.
+`setup` first asks `Enable access authentication? (y/n) => `. If you answer `y`, it asks for an access key twice and writes `.env` with only a salted PBKDF2-SHA256 hash. If you answer `n`, access authentication stays disabled. `.env` is gitignored.
 
 If you expose it behind a reverse proxy, edit `.env` and set the exact public host:
 
@@ -60,7 +60,7 @@ UNLINE_BASIC_AUTH_PASSWORD_HASH=pbkdf2-sha256:...
 UNLINE_BASIC_AUTH_REALM=unline
 ```
 
-Only enable `UNLINE_FORWARD_COOKIES` or `UNLINE_FORWARD_AUTHORIZATION` if a future LINE asset version proves it is required. When Basic auth is enabled, the incoming `Authorization` header is consumed by unline and is not forwarded to LINE upstreams.
+Only enable `UNLINE_FORWARD_COOKIES` or `UNLINE_FORWARD_AUTHORIZATION` if a future LINE asset version proves it is required. When access authentication is enabled, the incoming `Authorization` header is consumed by unline and is not forwarded to LINE upstreams.
 
 ## Go Development Commands
 
