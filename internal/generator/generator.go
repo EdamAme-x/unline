@@ -373,7 +373,7 @@ func patchOGPImagePatcher(dir string) error {
 if(window.__unlineOGPImagePatch){return;}
 window.__unlineOGPImagePatch=1;
 var proxyPath="/_proxy/OGP_IMAGE?url=";
-var passthroughHosts={"profile.line-scdn.net":1,"shop.line-scdn.net":1,"obs.line-scdn.net":1,"static.line-scdn.net":1,"emojipack.landpress.line.me":1};
+var passthroughHosts={"profile.line-scdn.net":1,"shop.line-scdn.net":1,"obs.line-scdn.net":1,"obs.line-apps.com":1,"static.line-scdn.net":1,"emojipack.landpress.line.me":1};
 function proxyURL(raw){
 	if(!raw){return"";}
 	try{
