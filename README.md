@@ -12,13 +12,7 @@ UNLINE_SETUP_UID=$(id -u) UNLINE_SETUP_GID=$(id -g) docker compose run --rm setu
 docker compose up -d --build unline
 ```
 
-Open `http://127.0.0.1:8080`.
-
-If `8080` is already in use:
-
-```bash
-UNLINE_HOST_PORT=18080 docker compose up -d --build unline
-```
+Open `http://127.0.0.1`.
 
 `setup` first asks `Enable access authentication? (y/n) => `. If you answer `y`, it asks for an access key twice and writes `.env` with only a salted PBKDF2-SHA256 hash. If you answer `n`, access authentication stays disabled. `.env` is gitignored.
 
@@ -50,7 +44,8 @@ docker compose build \
 Useful `.env` values:
 
 ```bash
-UNLINE_ADDR=127.0.0.1:8080
+UNLINE_ADDR=0.0.0.0:80
+UNLINE_HOST_PORT=80
 UNLINE_ASSETS_DIR=./www
 UNLINE_ALLOWED_HOSTS=localhost,127.0.0.1,::1
 UNLINE_FORWARD_COOKIES=false
@@ -71,7 +66,7 @@ go run ./cmd/unline setup --out .env
 set -a; . ./.env; set +a
 go run ./cmd/unline generate --out ./www
 go run ./cmd/unline verify --assets ./www
-go run ./cmd/unline serve --assets ./www --allowed-hosts localhost,127.0.0.1,::1
+go run ./cmd/unline serve --assets ./www --addr 127.0.0.1:8080 --allowed-hosts localhost,127.0.0.1,::1
 ```
 
 ## Secret Scanning

@@ -20,7 +20,7 @@ services:
       context: .
     image: unline:local
     environment:
-      UNLINE_ADDR: 0.0.0.0:8080
+      UNLINE_ADDR: ${UNLINE_ADDR:-0.0.0.0:80}
       UNLINE_ASSETS_DIR: /app/www
       UNLINE_ALLOWED_HOSTS: ${UNLINE_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
       UNLINE_FORWARD_COOKIES: ${UNLINE_FORWARD_COOKIES:-false}
@@ -29,10 +29,12 @@ services:
       UNLINE_BASIC_AUTH_PASSWORD_HASH: ${UNLINE_BASIC_AUTH_PASSWORD_HASH:-}
       UNLINE_BASIC_AUTH_REALM: ${UNLINE_BASIC_AUTH_REALM:-unline}
     ports:
-      - "127.0.0.1:${UNLINE_HOST_PORT:-8080}:8080"
+      - "127.0.0.1:${UNLINE_HOST_PORT:-80}:80"
     read_only: true
     cap_drop:
       - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
     tmpfs:

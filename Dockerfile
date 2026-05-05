@@ -20,10 +20,10 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /out/unline /usr/local/bin/unline
 COPY --from=assets --chown=nonroot:nonroot /out/www /app/www
-ENV UNLINE_ADDR=0.0.0.0:8080
+ENV UNLINE_ADDR=0.0.0.0:80
 ENV UNLINE_ASSETS_DIR=/app/www
 ENV UNLINE_ALLOWED_HOSTS=localhost,127.0.0.1,::1
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 80
 ENTRYPOINT ["/usr/local/bin/unline"]
 CMD ["serve"]
