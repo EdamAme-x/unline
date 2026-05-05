@@ -369,7 +369,164 @@ func patchIndex(dir string) error {
 }
 
 func patchOGPImagePatcher(dir string) error {
-	script := `(function(){var proxyPath="/_proxy/OGP_IMAGE?url=";var passthroughHosts={"profile.line-scdn.net":1,"shop.line-scdn.net":1,"obs.line-scdn.net":1,"static.line-scdn.net":1,"emojipack.landpress.line.me":1};function proxyURL(raw){if(!raw){return"";}try{var u=new URL(raw,location.href);if(u.origin===location.origin){return"";}if(u.protocol!=="https:"&&u.protocol!=="http:"){return"";}if(passthroughHosts[u.hostname]){return"";}return proxyPath+encodeURIComponent(u.href);}catch(e){return"";}}function patchImage(img){if(!img||img.nodeType!==Node.ELEMENT_NODE||img.tagName!=="IMG"){return;}var raw=img.getAttribute("src");var next=proxyURL(raw);if(!next){return;}img.dataset.unlineOriginalSrc=raw;img.setAttribute("src",next);if(img.hasAttribute("srcset")){img.dataset.unlineOriginalSrcset=img.getAttribute("srcset")||"";img.removeAttribute("srcset");}}function scan(root){if(!root){return;}if(root.nodeType===Node.ELEMENT_NODE&&root.tagName==="IMG"){patchImage(root);return;}if(root.querySelectorAll){root.querySelectorAll("img").forEach(patchImage);}}function start(){scan(document);var observer=new MutationObserver(function(records){for(var i=0;i<records.length;i++){var record=records[i];if(record.type==="attributes"){patchImage(record.target);continue;}for(var j=0;j<record.addedNodes.length;j++){scan(record.addedNodes[j]);}}});observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","srcset"]});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true});}else{start();}})();`
+	script := `(function(){
+if(window.__unlineOGPImagePatch){return;}
+window.__unlineOGPImagePatch=1;
+var proxyPath="/_proxy/OGP_IMAGE?url=";
+var passthroughHosts={"profile.line-scdn.net":1,"shop.line-scdn.net":1,"obs.line-scdn.net":1,"static.line-scdn.net":1,"emojipack.landpress.line.me":1};
+function proxyURL(raw){
+	if(!raw){return"";}
+	try{
+		var value=String(raw);
+		var u=new URL(value,location.href);
+		if(u.origin===location.origin){return"";}
+		if(u.protocol!=="https:"&&u.protocol!=="http:"){return"";}
+		if(passthroughHosts[u.hostname]){return"";}
+		return proxyPath+encodeURIComponent(u.href);
+	}catch(e){return"";}
+}
+function rewriteURL(raw){
+	var next=proxyURL(raw);
+	return next||raw;
+}
+function rewriteSrcset(raw){
+	if(!raw){return raw;}
+	var value=String(raw);
+	if(value.indexOf("data:")>=0){return raw;}
+	return value.split(",").map(function(part){
+		var trimmed=part.trim();
+		if(!trimmed){return part;}
+		var pieces=trimmed.split(/\s+/);
+		var next=proxyURL(pieces[0]);
+		if(!next){return part;}
+		pieces[0]=next;
+		return pieces.join(" ");
+	}).join(", ");
+}
+function rewriteCSSURLs(raw){
+	if(!raw){return raw;}
+	return String(raw).replace(/url\((["']?)(.*?)\1\)/g,function(match,quote,url){
+		var next=proxyURL(url);
+		return next?'url("'+next+'")':match;
+	});
+}
+function patchStyleObject(style){
+	if(!style||style.__unlineOGPImagePatch){return style;}
+	try{Object.defineProperty(style,"__unlineOGPImagePatch",{value:1});}catch(e){return style;}
+	var cssNames={background:"background",backgroundImage:"background-image",borderImage:"border-image",borderImageSource:"border-image-source",listStyleImage:"list-style-image"};
+	Object.keys(cssNames).forEach(function(name){
+		var desc=Object.getOwnPropertyDescriptor(style,name);
+		if(!desc){return;}
+		try{
+			if(desc.set&&desc.get){
+				Object.defineProperty(style,name,{configurable:true,enumerable:desc.enumerable,get:function(){return desc.get.call(this);},set:function(value){
+					return desc.set.call(this,rewriteCSSURLs(value));
+				}});
+				return;
+			}
+			if(desc.writable){
+				Object.defineProperty(style,name,{configurable:true,enumerable:desc.enumerable,get:function(){
+					return this.getPropertyValue(cssNames[name]);
+				},set:function(value){
+					return originalSetProperty.call(this,cssNames[name],rewriteCSSURLs(value),"");
+				}});
+			}
+		}catch(e){}
+	});
+	return style;
+}
+function remember(el,key,value){
+	try{el.dataset[key]=String(value);}catch(e){}
+}
+function patchImage(img){
+	if(!img||img.nodeType!==Node.ELEMENT_NODE||img.tagName!=="IMG"){return;}
+	var raw=img.getAttribute("src");
+	var next=proxyURL(raw);
+	if(next){
+		remember(img,"unlineOriginalSrc",raw);
+		originalSetAttribute.call(img,"src",next);
+	}
+	var srcset=img.getAttribute("srcset");
+	var rewritten=rewriteSrcset(srcset);
+	if(rewritten&&rewritten!==srcset){
+		remember(img,"unlineOriginalSrcset",srcset);
+		originalSetAttribute.call(img,"srcset",rewritten);
+	}
+}
+var imageSrc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");
+if(imageSrc&&imageSrc.set&&imageSrc.get){
+	Object.defineProperty(HTMLImageElement.prototype,"src",{configurable:true,enumerable:imageSrc.enumerable,get:function(){return imageSrc.get.call(this);},set:function(value){
+		var next=proxyURL(value);
+		if(next){remember(this,"unlineOriginalSrc",value);return imageSrc.set.call(this,next);}
+		return imageSrc.set.call(this,value);
+	}});
+}
+var imageSrcset=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"srcset");
+if(imageSrcset&&imageSrcset.set&&imageSrcset.get){
+	Object.defineProperty(HTMLImageElement.prototype,"srcset",{configurable:true,enumerable:imageSrcset.enumerable,get:function(){return imageSrcset.get.call(this);},set:function(value){
+		var rewritten=rewriteSrcset(value);
+		if(rewritten!==value){remember(this,"unlineOriginalSrcset",value);}
+		return imageSrcset.set.call(this,rewritten);
+	}});
+}
+var originalSetAttribute=Element.prototype.setAttribute;
+Element.prototype.setAttribute=function(name,value){
+	var lower=String(name).toLowerCase();
+	if(this instanceof HTMLImageElement){
+		if(lower==="src"){
+			var next=proxyURL(value);
+			if(next){remember(this,"unlineOriginalSrc",value);value=next;}
+		}else if(lower==="srcset"){
+			var rewritten=rewriteSrcset(value);
+			if(rewritten!==value){remember(this,"unlineOriginalSrcset",value);}
+			value=rewritten;
+		}
+	}else if(lower==="style"){
+		value=rewriteCSSURLs(value);
+	}
+	return originalSetAttribute.call(this,name,value);
+};
+var originalSetProperty=CSSStyleDeclaration.prototype.setProperty;
+CSSStyleDeclaration.prototype.setProperty=function(name,value,priority){
+	return originalSetProperty.call(this,name,rewriteCSSURLs(value),priority);
+};
+var styleDescriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,"style");
+if(styleDescriptor&&styleDescriptor.get){
+	Object.defineProperty(HTMLElement.prototype,"style",{configurable:true,enumerable:styleDescriptor.enumerable,get:function(){
+		return patchStyleObject(styleDescriptor.get.call(this));
+	}});
+}
+["background","backgroundImage","borderImage","borderImageSource","listStyleImage"].forEach(function(name){
+	var desc=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,name);
+	if(!desc||!desc.set||!desc.get){return;}
+	Object.defineProperty(CSSStyleDeclaration.prototype,name,{configurable:true,enumerable:desc.enumerable,get:function(){return desc.get.call(this);},set:function(value){
+		return desc.set.call(this,rewriteCSSURLs(value));
+	}});
+});
+var cssText=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,"cssText");
+if(cssText&&cssText.set&&cssText.get){
+	Object.defineProperty(CSSStyleDeclaration.prototype,"cssText",{configurable:true,enumerable:cssText.enumerable,get:function(){return cssText.get.call(this);},set:function(value){
+		return cssText.set.call(this,rewriteCSSURLs(value));
+	}});
+}
+function scan(root){
+	if(!root){return;}
+	if(root.nodeType===Node.ELEMENT_NODE&&root.tagName==="IMG"){patchImage(root);return;}
+	if(root.querySelectorAll){root.querySelectorAll("img").forEach(patchImage);}
+}
+function start(){
+	scan(document);
+	var observer=new MutationObserver(function(records){
+		for(var i=0;i<records.length;i++){
+			var record=records[i];
+			if(record.type==="attributes"){patchImage(record.target);continue;}
+			for(var j=0;j<record.addedNodes.length;j++){scan(record.addedNodes[j]);}
+		}
+	});
+	observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","srcset"]});
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true});}else{start();}
+})();`
 	return os.WriteFile(filepath.Join(dir, "unline-ogp-image-patch.js"), []byte(script), 0o644)
 }
 
