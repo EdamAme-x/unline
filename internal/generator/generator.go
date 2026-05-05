@@ -253,6 +253,10 @@ func PatchAssets(dir string) (Report, error) {
 		return report, err
 	}
 	report.Lines = append(report.Lines, "patch powered-by count=1")
+	if err := patchCallMessagePatcher(dir); err != nil {
+		return report, err
+	}
+	report.Lines = append(report.Lines, "patch call message svg=1")
 	if err := patchCacheWorker(dir); err != nil {
 		return report, err
 	}
@@ -336,6 +340,9 @@ func patchIndex(dir string) error {
 	if !strings.Contains(content, "unline-cleanup.js") {
 		content = strings.Replace(content, "<head>", `<head><script defer="defer" src="/unline-cleanup.js"></script>`, 1)
 	}
+	if !strings.Contains(content, "unline-call-message-patch.js") {
+		content = strings.Replace(content, "<head>", `<head><script defer="defer" src="/unline-call-message-patch.js"></script>`, 1)
+	}
 	if !strings.Contains(content, "unline-powered.css") {
 		content = strings.Replace(content, "</head>", `<link rel="stylesheet" href="/unline-powered.css"></head>`, 1)
 	}
@@ -352,6 +359,45 @@ func patchIndex(dir string) error {
 	}
 	cleanup := `(function(){if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(registrations){registrations.forEach(function(registration){registration.unregister();});}).catch(function(){});}if("caches"in window){caches.keys().then(function(keys){return Promise.all(keys.map(function(key){return caches.delete(key);}));}).catch(function(){});}})();`
 	return os.WriteFile(filepath.Join(dir, "unline-cleanup.js"), []byte(cleanup), 0o644)
+}
+
+func patchCallMessagePatcher(dir string) error {
+	svgPath, err := callMessageSVGPath(dir)
+	if err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`(function(){var target="\u3053\u306e\u6a5f\u80fd\u306f\u304a\u4f7f\u3044\u306eOS\u30d0\u30fc\u30b8\u30e7\u30f3\u306b\u306f\u5bfe\u5fdc\u3057\u3066\u3044\u307e\u305b\u3093";var patchedClass="unline-call-svg-message";var styleId="unline-call-svg-message-style";var svg=%q;function installStyle(){if(document.getElementById(styleId)){return;}var style=document.createElement("style");style.id=styleId;style.textContent="."+patchedClass+"{font-size:0!important;line-height:0!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-width:20px!important;min-height:20px!important;vertical-align:middle!important}."+patchedClass+"::before{content:\"\";display:inline-block;width:20px;height:20px;background:url(\""+svg+"\") center/contain no-repeat;vertical-align:middle}";document.head.appendChild(style);}function patchText(node){if(!node||!node.nodeValue||node.nodeValue.indexOf(target)<0){return;}var parent=node.parentElement;if(!parent||parent.classList.contains(patchedClass)){return;}installStyle();parent.classList.add(patchedClass);parent.setAttribute("aria-label","call");}function scan(root){if(!root){return;}if(root.nodeType===Node.TEXT_NODE){patchText(root);return;}if(root.nodeType!==Node.ELEMENT_NODE&&root.nodeType!==Node.DOCUMENT_NODE&&root.nodeType!==Node.DOCUMENT_FRAGMENT_NODE){return;}var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);var nodes=[];while(walker.nextNode()){nodes.push(walker.currentNode);}for(var i=0;i<nodes.length;i++){patchText(nodes[i]);}}function start(){scan(document.body);var observer=new MutationObserver(function(records){for(var i=0;i<records.length;i++){var record=records[i];if(record.type==="characterData"){patchText(record.target);continue;}for(var j=0;j<record.addedNodes.length;j++){scan(record.addedNodes[j]);}}});observer.observe(document.body,{childList:true,subtree:true,characterData:true});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true});}else{start();}})();`, svgPath)
+	return os.WriteFile(filepath.Join(dir, "unline-call-message-patch.js"), []byte(script), 0o644)
+}
+
+func callMessageSVGPath(dir string) (string, error) {
+	manifestPath := filepath.Join(dir, "asset-manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err == nil {
+		var manifest struct {
+			Files map[string]string `json:"files"`
+		}
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return "", err
+		}
+		if path, ok := manifest.Files["static/media/icon_video.svg"]; ok && path != "" {
+			return path, nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "static/media/icon_video*.svg"))
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("call message svg not found")
+	}
+	rel, err := filepath.Rel(dir, matches[0])
+	if err != nil {
+		return "", err
+	}
+	return "/" + filepath.ToSlash(rel), nil
 }
 
 func patchCacheWorker(dir string) error {
@@ -402,7 +448,7 @@ func VerifyAssets(dir string) (Report, error) {
 		fn   func() error
 	}{
 		{"required files", func() error {
-			for _, file := range []string{"index.html", "unline-cleanup.js", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
+			for _, file := range []string{"index.html", "unline-call-message-patch.js", "unline-cleanup.js", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
 				if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 					return err
 				}
@@ -420,6 +466,12 @@ func VerifyAssets(dir string) (Report, error) {
 				return err
 			}
 			return walkNoContains(filepath.Join(dir, "static/js"), []string{`serviceWorker.register("/cache.js")`})
+		}},
+		{"call message patcher", func() error {
+			if err := fileContains(filepath.Join(dir, "index.html"), "/unline-call-message-patch.js"); err != nil {
+				return err
+			}
+			return fileContains(filepath.Join(dir, "unline-call-message-patch.js"), "unline-call-svg-message", "icon_video", `\u3053\u306e\u6a5f\u80fd`)
 		}},
 		{"proxy patches", func() error {
 			if err := fileContains(filepath.Join(dir, "static/js/main.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "/_proxy/CDN_STICKER", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"); err != nil {

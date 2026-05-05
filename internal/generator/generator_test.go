@@ -9,6 +9,7 @@ import (
 func TestPatchAndVerifyAssets(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "index.html"), `<!doctype html><html><head></head><body><div id="root"></div></body></html>`)
+	mustWrite(t, filepath.Join(dir, "asset-manifest.json"), `{"files":{"static/media/icon_video.svg":"/static/media/icon_video.test.svg"}}`)
 	mustWrite(t, filepath.Join(dir, "manifest.json"), `{"host_permissions":["*://*/*"],"key":"secret","update_url":"https://clients2.google.com/service/update2/crx","name":"LINE"}`)
 	mustWrite(t, filepath.Join(dir, "cache.js"), `self.addEventListener("fetch",(e=>{if(/stickershop/.test(new URL(e.request.url).hostname))e.respondWith(fetch(e.request))}));`)
 	mustWrite(t, filepath.Join(dir, "static/js/main.js"), `const r="https://ci.line-apps.com/R4";const cfg={chrome_gw:{mobile:[{host:"line-chrome-gw.line-apps.com",protocol:"http",port:443,secure:"tls"}],wifi:[{host:"line-chrome-gw.line-apps.com",protocol:"http",port:443,secure:"tls"}]},cdn_sticker:{mobile:[{host:"stickershop.line-scdn.net",protocol:"http",port:443,secure:"tls"}],wifi:[{host:"stickershop.line-scdn.net",protocol:"http",port:443,secure:"tls"}]}};navigator.serviceWorker.register("/cache.js").catch((function(){}));S({dsn:"https://abc@sentry-uit.line-apps.com/12",sampleRate:.5,tracesSampleRate:.2});`)
