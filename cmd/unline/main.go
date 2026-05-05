@@ -69,7 +69,7 @@ func serve(ctx context.Context, args []string) error {
 	fs.Int64Var(&cfg.MaxBodyBytes, "max-body-bytes", envInt64("UNLINE_MAX_BODY_BYTES", cfg.MaxBodyBytes), "maximum proxied request body size")
 	fs.BoolVar(&cfg.ForwardCookies, "forward-cookies", envBool("UNLINE_FORWARD_COOKIES", false), "forward Cookie headers to LINE upstreams")
 	fs.BoolVar(&cfg.ForwardAuthorization, "forward-authorization", envBool("UNLINE_FORWARD_AUTHORIZATION", false), "forward Authorization headers to LINE upstreams")
-	fs.StringVar(&cfg.BasicAuthUsername, "basic-auth-user", envString("UNLINE_BASIC_AUTH_USERNAME", ""), "optional Basic auth username")
+	fs.StringVar(&cfg.BasicAuthUsername, "basic-auth-user", envString("UNLINE_BASIC_AUTH_USERNAME", ""), "ignored Basic auth username kept for compatibility")
 	fs.StringVar(&cfg.BasicAuthPasswordHash, "basic-auth-password-hash", envString("UNLINE_BASIC_AUTH_PASSWORD_HASH", ""), "PBKDF2 password hash from unline setup")
 	fs.StringVar(&cfg.BasicAuthRealm, "basic-auth-realm", envString("UNLINE_BASIC_AUTH_REALM", cfg.BasicAuthRealm), "Basic auth realm")
 	if err := fs.Parse(args); err != nil {
@@ -119,11 +119,9 @@ func serve(ctx context.Context, args []string) error {
 func setup(args []string) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	out := ".env"
-	username := "unline"
 	realm := "unline"
 	force := false
 	fs.StringVar(&out, "out", out, "environment file to write")
-	fs.StringVar(&username, "username", username, "Basic auth username")
 	fs.StringVar(&realm, "realm", realm, "Basic auth realm")
 	fs.BoolVar(&force, "force", false, "overwrite an existing output file")
 	if err := fs.Parse(args); err != nil {
@@ -142,9 +140,6 @@ func setup(args []string) error {
 	}
 	hash := ""
 	if enableAuth {
-		if strings.TrimSpace(username) == "" {
-			return fmt.Errorf("username must not be empty")
-		}
 		first, err := readSecret(reader, "Access key: ")
 		if err != nil {
 			return err
@@ -160,8 +155,6 @@ func setup(args []string) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		username = ""
 	}
 	content := strings.Join([]string{
 		"UNLINE_ADDR=0.0.0.0:80",
@@ -170,7 +163,7 @@ func setup(args []string) error {
 		"UNLINE_ALLOWED_HOSTS=localhost,127.0.0.1,::1",
 		"UNLINE_FORWARD_COOKIES=false",
 		"UNLINE_FORWARD_AUTHORIZATION=false",
-		"UNLINE_BASIC_AUTH_USERNAME=" + shellValue(username),
+		"UNLINE_BASIC_AUTH_USERNAME=",
 		"UNLINE_BASIC_AUTH_PASSWORD_HASH=" + shellValue(hash),
 		"UNLINE_BASIC_AUTH_REALM=" + shellValue(realm),
 		"",

@@ -69,8 +69,8 @@ func (h *Handler) wrap(next http.Handler) http.Handler {
 }
 
 func (h *Handler) basicAuthOK(w http.ResponseWriter, r *http.Request) bool {
-	username, password, ok := r.BasicAuth()
-	if !ok || username != h.cfg.BasicAuthUsername || !auth.VerifySecret(h.cfg.BasicAuthPasswordHash, []byte(password)) {
+	_, password, ok := r.BasicAuth()
+	if !ok || !auth.VerifySecret(h.cfg.BasicAuthPasswordHash, []byte(password)) {
 		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm=%q, charset="UTF-8"`, h.cfg.BasicAuthRealm))
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return false

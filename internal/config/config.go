@@ -47,9 +47,6 @@ func (c *ServerConfig) Finalize() error {
 	if c.MaxBodyBytes <= 0 {
 		return fmt.Errorf("max body bytes must be positive")
 	}
-	if c.BasicAuthPasswordHash != "" && strings.TrimSpace(c.BasicAuthUsername) == "" {
-		return fmt.Errorf("basic auth username is required when password hash is set")
-	}
 	if c.BasicAuthRealm == "" {
 		c.BasicAuthRealm = "unline"
 	}
@@ -73,7 +70,7 @@ func (c *ServerConfig) Finalize() error {
 }
 
 func (c ServerConfig) BasicAuthEnabled() bool {
-	return strings.TrimSpace(c.BasicAuthUsername) != "" && strings.TrimSpace(c.BasicAuthPasswordHash) != ""
+	return strings.TrimSpace(c.BasicAuthPasswordHash) != ""
 }
 
 func (c ServerConfig) HostAllowed(hostport string) bool {

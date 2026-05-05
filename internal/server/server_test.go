@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/EdamAme-x/unline/internal/auth"
 	"github.com/EdamAme-x/unline/internal/config"
 )
 
@@ -62,5 +63,43 @@ func TestProxyPreflightRejectsExternalOrigin(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected forbidden origin, got status=%d", rec.Code)
+	}
+}
+
+func TestBasicAuthIgnoresUsername(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := auth.HashSecret([]byte("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultServerConfig()
+	cfg.AssetsDir = dir
+	cfg.BasicAuthPasswordHash = hash
+	cfg.BasicAuthUsername = "unline"
+	if err := cfg.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/", nil)
+	req.SetBasicAuth("anything", "secret")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/", nil)
+	req.SetBasicAuth("anything", "wrong")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for wrong password, got status=%d", rec.Code)
 	}
 }
