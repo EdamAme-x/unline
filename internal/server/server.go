@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	r4BaseURL       = "https://ci.line-apps.com/R4"
-	chromeGWBaseURL = "https://line-chrome-gw.line-apps.com"
+	r4BaseURL         = "https://ci.line-apps.com/R4"
+	chromeGWBaseURL   = "https://line-chrome-gw.line-apps.com"
+	cdnStickerBaseURL = "https://stickershop.line-scdn.net"
 )
 
 type Handler struct {
@@ -50,6 +51,7 @@ func New(cfg config.ServerConfig) (http.Handler, error) {
 	mux.HandleFunc("/healthz", h.healthz)
 	mux.HandleFunc("/_proxy/R4", h.proxyR4)
 	mux.HandleFunc("/_proxy/CHROME_GW/", h.proxyChromeGW)
+	mux.HandleFunc("/_proxy/CDN_STICKER/", h.proxyCDNSticker)
 	mux.HandleFunc("/", h.static)
 	return h.wrap(mux), nil
 }
@@ -131,18 +133,38 @@ func (h *Handler) proxyR4(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) proxyChromeGW(w http.ResponseWriter, r *http.Request) {
-	suffix := strings.TrimPrefix(r.URL.Path, "/_proxy/CHROME_GW")
+	h.proxyPath(w, r, "/_proxy/CHROME_GW", chromeGWBaseURL, proxyOptions{chromeGW: true})
+}
+
+func (h *Handler) proxyCDNSticker(w http.ResponseWriter, r *http.Request) {
+	h.proxyPath(w, r, "/_proxy/CDN_STICKER", cdnStickerBaseURL, proxyOptions{})
+}
+
+func (h *Handler) proxyPath(w http.ResponseWriter, r *http.Request, prefix, baseURL string, opts proxyOptions) {
+	suffix := strings.TrimPrefix(r.URL.Path, prefix)
 	if suffix == "" {
 		suffix = "/"
 	}
-	if strings.Contains(suffix, "\\") || strings.Contains(path.Clean("/"+suffix), "..") {
+	if !proxySuffixAllowed(suffix) {
 		http.Error(w, "bad upstream path", http.StatusBadRequest)
 		return
 	}
-	u, _ := url.Parse(chromeGWBaseURL)
+	u, _ := url.Parse(baseURL)
 	u.Path = suffix
 	u.RawQuery = r.URL.RawQuery
-	h.proxy(w, r, u.String(), proxyOptions{chromeGW: true})
+	h.proxy(w, r, u.String(), opts)
+}
+
+func proxySuffixAllowed(suffix string) bool {
+	if strings.Contains(suffix, "\\") {
+		return false
+	}
+	for _, part := range strings.Split(suffix, "/") {
+		if part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target string, opts proxyOptions) {

@@ -224,6 +224,10 @@ func PatchAssets(dir string) (Report, error) {
 		{File: "static/js/ltsmSandbox.js", Pattern: regexp.MustCompile(`"line-chrome-gw\.line-apps\.com"`), Replacement: "`${location.host}/_proxy/CHROME_GW`", Required: true, Name: "ltsm chrome gateway proxy"},
 		{File: "static/js/main.js", Pattern: regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CHROME_GW`,protocol:\"http\",port:443"), Replacement: "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", Required: true, Name: "main chrome gateway http port"},
 		{File: "static/js/ltsmSandbox.js", Pattern: regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CHROME_GW`,protocol:\"http\",port:443"), Replacement: "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", Required: true, Name: "ltsm chrome gateway http port"},
+		{File: "static/js/main.js", Pattern: regexp.MustCompile(`"stickershop\.line-scdn\.net"`), Replacement: "`${location.host}/_proxy/CDN_STICKER`", Required: true, Name: "main sticker cdn proxy"},
+		{File: "static/js/ltsmSandbox.js", Pattern: regexp.MustCompile(`"stickershop\.line-scdn\.net"`), Replacement: "`${location.host}/_proxy/CDN_STICKER`", Required: true, Name: "ltsm sticker cdn proxy"},
+		{File: "static/js/main.js", Pattern: regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CDN_STICKER`,protocol:\"http\",port:443"), Replacement: "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80", Required: true, Name: "main sticker cdn http port"},
+		{File: "static/js/ltsmSandbox.js", Pattern: regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CDN_STICKER`,protocol:\"http\",port:443"), Replacement: "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80", Required: true, Name: "ltsm sticker cdn http port"},
 		{File: "static/js/main.js", Pattern: regexp.MustCompile(`dsn:"https://[^"]*@sentry-uit\.line-apps\.com/\d+"`), Replacement: "dsn:void 0", Required: false, Name: "disable sentry dsn"},
 		{File: "static/js/main.js", Pattern: regexp.MustCompile(`sampleRate:\.?5`), Replacement: "sampleRate:0", Required: false, Name: "disable sentry sample"},
 		{File: "static/js/main.js", Pattern: regexp.MustCompile(`tracesSampleRate:\.?2`), Replacement: "tracesSampleRate:0", Required: false, Name: "disable sentry traces"},
@@ -277,6 +281,8 @@ func patchResidualJS(dir string) (int, error) {
 		{regexp.MustCompile(`"https://ci\.line-apps\.com/R4"`), "`${location.origin}/_proxy/R4`"},
 		{regexp.MustCompile(`"line-chrome-gw\.line-apps\.com"`), "`${location.host}/_proxy/CHROME_GW`"},
 		{regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CHROME_GW`,protocol:\"http\",port:443"), "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80"},
+		{regexp.MustCompile(`"stickershop\.line-scdn\.net"`), "`${location.host}/_proxy/CDN_STICKER`"},
+		{regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CDN_STICKER`,protocol:\"http\",port:443"), "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"},
 		{regexp.MustCompile(`dsn:"https://[^"]*@sentry-uit\.line-apps\.com/\d+"`), "dsn:void 0"},
 		{regexp.MustCompile(`sentry-uit\.line-apps\.com`), "127.0.0.1.invalid"},
 	}
@@ -384,13 +390,13 @@ func VerifyAssets(dir string) (Report, error) {
 			return fileContains(filepath.Join(dir, "index.html"), "Powered by", "https://github.com/EdamAme-x/unline")
 		}},
 		{"proxy patches", func() error {
-			if err := fileContains(filepath.Join(dir, "static/js/main.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80"); err != nil {
+			if err := fileContains(filepath.Join(dir, "static/js/main.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "/_proxy/CDN_STICKER", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"); err != nil {
 				return err
 			}
-			return fileContains(filepath.Join(dir, "static/js/ltsmSandbox.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "chrome-extension://"+officialExtensionID)
+			return fileContains(filepath.Join(dir, "static/js/ltsmSandbox.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "/_proxy/CDN_STICKER", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80", "chrome-extension://"+officialExtensionID)
 		}},
 		{"no direct telemetry/upstream literals", func() error {
-			return walkNoContains(dir, []string{"sentry-uit.line-apps.com", `"https://ci.line-apps.com/R4"`, `"line-chrome-gw.line-apps.com"`, "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:443", `"*://*/*"`})
+			return walkNoContains(dir, []string{"sentry-uit.line-apps.com", `"https://ci.line-apps.com/R4"`, `"line-chrome-gw.line-apps.com"`, `"stickershop.line-scdn.net"`, "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:443", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:443", `"*://*/*"`})
 		}},
 	}
 	var failed []string

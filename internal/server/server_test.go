@@ -33,7 +33,7 @@ func TestStaticHeadersAndHostGuard(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self' https://*.line-scdn.net https://*.landpress.line.me") || !strings.Contains(got, "img-src 'self' data: blob: https://*.line-scdn.net https://*.landpress.line.me") || !strings.Contains(got, "frame-ancestors 'self'") {
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self' https://profile.line-scdn.net https://shop.line-scdn.net https://stickershop.line-scdn.net") || !strings.Contains(got, "img-src 'self' data: blob: https://profile.line-scdn.net https://shop.line-scdn.net https://stickershop.line-scdn.net") || !strings.Contains(got, "media-src 'self' data: blob: https://stickershop.line-scdn.net") || !strings.Contains(got, "frame-ancestors 'self'") {
 		t.Fatalf("missing strict CSP: %q", got)
 	}
 	if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
@@ -66,6 +66,17 @@ func TestProxyPreflightRejectsExternalOrigin(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected forbidden origin, got status=%d", rec.Code)
+	}
+}
+
+func TestProxySuffixAllowedRejectsTraversal(t *testing.T) {
+	if !proxySuffixAllowed("/stickershop/v1/sticker/1/android/sticker.png") {
+		t.Fatal("expected normal sticker path to be allowed")
+	}
+	for _, suffix := range []string{"/../api", "/stickershop/../api", `/stickershop\api`} {
+		if proxySuffixAllowed(suffix) {
+			t.Fatalf("expected suffix to be rejected: %q", suffix)
+		}
 	}
 }
 
