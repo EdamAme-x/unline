@@ -25,3 +25,6 @@
 *.log
 coverage.out
 .playwright-mcp/
+script.py
+results.jsonl
+sandbox/
