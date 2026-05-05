@@ -253,6 +253,10 @@ func PatchAssets(dir string) (Report, error) {
 		return report, err
 	}
 	report.Lines = append(report.Lines, "patch powered-by count=1")
+	if err := patchCacheWorker(dir); err != nil {
+		return report, err
+	}
+	report.Lines = append(report.Lines, "patch service worker disabled=1")
 	if err := patchManifest(dir); err != nil {
 		return report, err
 	}
@@ -283,6 +287,7 @@ func patchResidualJS(dir string) (int, error) {
 		{regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CHROME_GW`,protocol:\"http\",port:443"), "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80"},
 		{regexp.MustCompile(`"stickershop\.line-scdn\.net"`), "`${location.host}/_proxy/CDN_STICKER`"},
 		{regexp.MustCompile("host:`\\$\\{location\\.host\\}/_proxy/CDN_STICKER`,protocol:\"http\",port:443"), "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"},
+		{regexp.MustCompile(`navigator\.serviceWorker\.register\("/cache\.js"\)\.catch\(\(function\(\)\{\}\)\)`), `navigator.serviceWorker.getRegistrations().then((e=>e.forEach((e=>e.unregister())))).catch((function(){}))`},
 		{regexp.MustCompile(`dsn:"https://[^"]*@sentry-uit\.line-apps\.com/\d+"`), "dsn:void 0"},
 		{regexp.MustCompile(`sentry-uit\.line-apps\.com`), "127.0.0.1.invalid"},
 	}
@@ -328,6 +333,9 @@ func patchIndex(dir string) error {
 		return err
 	}
 	content := string(data)
+	if !strings.Contains(content, "unline-cleanup.js") {
+		content = strings.Replace(content, "<head>", `<head><script defer="defer" src="/unline-cleanup.js"></script>`, 1)
+	}
 	if !strings.Contains(content, "unline-powered.css") {
 		content = strings.Replace(content, "</head>", `<link rel="stylesheet" href="/unline-powered.css"></head>`, 1)
 	}
@@ -339,7 +347,22 @@ func patchIndex(dir string) error {
 		return err
 	}
 	css := `.unline-powered{position:fixed;right:12px;bottom:10px;z-index:2147483647;padding:4px 7px;border-radius:6px;background:rgba(255,255,255,.88);color:#111;font:12px/1.3 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.18);pointer-events:auto}.unline-powered a{color:#06c755;text-decoration:none;font-weight:600}.unline-powered a:focus,.unline-powered a:hover{text-decoration:underline}`
-	return os.WriteFile(filepath.Join(dir, "unline-powered.css"), []byte(css), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "unline-powered.css"), []byte(css), 0o644); err != nil {
+		return err
+	}
+	cleanup := `(function(){if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(registrations){registrations.forEach(function(registration){registration.unregister();});}).catch(function(){});}if("caches"in window){caches.keys().then(function(keys){return Promise.all(keys.map(function(key){return caches.delete(key);}));}).catch(function(){});}})();`
+	return os.WriteFile(filepath.Join(dir, "unline-cleanup.js"), []byte(cleanup), 0o644)
+}
+
+func patchCacheWorker(dir string) error {
+	filename := filepath.Join(dir, "cache.js")
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	worker := `self.addEventListener("install",function(event){self.skipWaiting();});self.addEventListener("activate",function(event){event.waitUntil((async function(){const names=await caches.keys();await Promise.all(names.map(function(name){return caches.delete(name);}));await self.registration.unregister();await self.clients.claim();})());});self.addEventListener("fetch",function(){});`
+	return os.WriteFile(filename, []byte(worker), 0o644)
 }
 
 func patchManifest(dir string) error {
@@ -379,7 +402,7 @@ func VerifyAssets(dir string) (Report, error) {
 		fn   func() error
 	}{
 		{"required files", func() error {
-			for _, file := range []string{"index.html", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
+			for _, file := range []string{"index.html", "unline-cleanup.js", "unline-powered.css", "static/js/main.js", "static/js/ltsmSandbox.js"} {
 				if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 					return err
 				}
@@ -388,6 +411,15 @@ func VerifyAssets(dir string) (Report, error) {
 		}},
 		{"powered link", func() error {
 			return fileContains(filepath.Join(dir, "index.html"), "Powered by", "https://github.com/EdamAme-x/unline")
+		}},
+		{"service worker disabled", func() error {
+			if err := fileContains(filepath.Join(dir, "index.html"), "/unline-cleanup.js"); err != nil {
+				return err
+			}
+			if err := fileContains(filepath.Join(dir, "unline-cleanup.js"), "serviceWorker", "unregister", "caches.delete"); err != nil {
+				return err
+			}
+			return walkNoContains(filepath.Join(dir, "static/js"), []string{`serviceWorker.register("/cache.js")`})
 		}},
 		{"proxy patches", func() error {
 			if err := fileContains(filepath.Join(dir, "static/js/main.js"), "/_proxy/R4", "/_proxy/CHROME_GW", "/_proxy/CDN_STICKER", "host:`${location.host}/_proxy/CHROME_GW`,protocol:\"http\",port:80", "host:`${location.host}/_proxy/CDN_STICKER`,protocol:\"http\",port:80"); err != nil {
