@@ -2,6 +2,7 @@
 
 セルフホスト可能なLINEのWebクライアント
 学校のPCでLINE使いたい人向け！
+Web API サ終されたら、[linejs](https://github.com/evex-dev/linejs) で作り直そうと思ってます。
 
 ## Docker Quick Start
 
